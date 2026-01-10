@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  nginx:
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ../nginx/conf.d/ssl.conf:/etc/nginx/conf.d/ssl.conf:ro
+
+  api:
+    build: 
+      target: production
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+
+  web:
+    build: 
+      target: production
+    environment: 
+      - NODE_ENV=production
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  postgres:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  redis:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  horizon:
+    build:
+      target: production
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  scheduler:
+    build:
+      target: production
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M

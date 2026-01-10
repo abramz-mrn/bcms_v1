@@ -1,0 +1,125 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:1.28-alpine
+    container_name: bcms_nginx
+    restart: unless-stopped
+    ports: 
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../nginx/default.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/conf.d:/etc/nginx/conf.d:ro
+      - api_storage:/var/www/api/storage/app/public:ro
+    depends_on:
+      - api
+      - web
+    networks:
+      - bcms_network
+
+  api:
+    build:
+      context: ../../../apps/api
+      dockerfile: Dockerfile
+    container_name: bcms_api
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+    volumes:
+      - api_storage:/var/www/html/storage/app
+    depends_on:
+      - postgres
+      - redis
+    networks: 
+      - bcms_network
+
+  web:
+    build: 
+      context: ../../../apps/web
+      dockerfile: Dockerfile
+    container_name: bcms_web
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+    depends_on:
+      - api
+    networks:
+      - bcms_network
+
+  postgres:
+    image:  postgres:18-alpine
+    container_name: bcms_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-bcms}
+      POSTGRES_USER: ${DB_USERNAME:-bcms_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-bcms_password}
+    volumes: 
+      - postgres_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks: 
+      - bcms_network
+    healthcheck:
+      test:  ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-bcms_user} -d ${DB_DATABASE:-bcms}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis: 
+    image: redis:8-alpine
+    container_name: bcms_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    networks:
+      - bcms_network
+    healthcheck:
+      test:  ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  horizon:
+    build:
+      context: ../../../apps/api
+      dockerfile: Dockerfile
+    container_name: bcms_horizon
+    restart: unless-stopped
+    command: php artisan horizon
+    depends_on:
+      - api
+      - redis
+    networks:
+      - bcms_network
+
+  scheduler:
+    build:
+      context: ../../../apps/api
+      dockerfile: Dockerfile
+    container_name: bcms_scheduler
+    restart: unless-stopped
+    command: >
+      sh -c "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"
+    depends_on:
+      - api
+      - redis
+    networks:
+      - bcms_network
+
+networks:
+  bcms_network: 
+    driver: bridge
+
+volumes: 
+  postgres_data:
+  redis_data:
+  api_storage: 

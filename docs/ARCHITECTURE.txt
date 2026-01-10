@@ -1,0 +1,339 @@
+# BCMS System Architecture
+
+## Overview
+
+BCMS (Billing & Customer Management System) is a comprehensive solution for Internet Service Providers (ISPs) to manage their customers, billing, and service provisioning.
+
+## Architecture Diagram
+
+```
+                                    ┌─────────────────────────────────────────────────────────────┐
+                                    │                        INTERNET                             │
+                                    └─────────────────────────────────────────────────────────────┘
+                                                              │
+                                                              ▼
+                                    ┌─────────────────────────────────────────────────────────────┐
+                                    │                    NGINX (Reverse Proxy)                    │
+                                    │                    - SSL/TLS Termination                    │
+                                    │                    - Load Balancing                         │
+                                    │                    Port 80/443                              │
+                                    └─────────────────────────────────────────────────────────────┘
+                                                    │                       │
+                                           /api/*   │                       │  /*
+                                                    ▼                       ▼
+                        ┌───────────────────────────────────┐   ┌───────────────────────────────────┐
+                        │         LARAVEL 12 API            │   │        NEXT.JS 22 (SSR)           │
+                        │      (Octane + RoadRunner)        │   │      (TypeScript + Tailwind)      │
+                        │           Port 8000               │   │           Port 3000               │
+                        │                                   │   │                                   │
+                        │  ┌─────────────────────────────┐  │   │  ┌─────────────────────────────┐  │
+                        │  │     Laravel Sanctum         │  │   │  │      React Components       │  │
+                        │  │     (Authentication)        │  │   │  │      (Dashboard, CRUD)      │  │
+                        │  └─────────────────────────────┘  │   │  └─────────────────────────────┘  │
+                        │                                   │   │                                   │
+                        │  ┌─────────────────────────────┐  │   │  ┌─────────────────────────────┐  │
+                        │  │     Domain Services         │  │   │  │      API Client Layer       │  │
+                        │  │  (Billing, Provisioning)    │  │   │  │      (Axios + SWR)          │  │
+                        │  └─────────────────────────────┘  │   │  └─────────────────────────────┘  │
+                        └───────────────────────────────────┘   └───────────────────────────────────┘
+                                           │
+                    ┌──────────────────────┼──────────────────────┐
+                    │                      │                      │
+                    ▼                      ▼                      ▼
+        ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────────────┐
+        │   POSTGRESQL 18   │  │     REDIS 8       │  │    LARAVEL HORIZON        │
+        │   (Primary DB)    │  │  (Cache + Queue)  │  │   (Queue Monitoring)      │
+        │    Port 5432      │  │    Port 6379      │  │                           │
+        └───────────────────┘  └───────────────────┘  └───────────────────────────┘
+                                           │
+                    ┌──────────────────────┼──────────────────────┐
+                    │                      │                      │
+                    ▼                      ▼                      ▼
+        ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────────────┐
+        │   SCHEDULER       │  │  MIKROTIK ROUTERS │  │   EXTERNAL SERVICES       │
+        │ (Cron Container)  │  │  (RouterOS API)   │  │                           │
+        │                   │  │                   │  │  - Midtrans/Xendit        │
+        │ - Invoice Gen     │  │  - PPPoE Mgmt     │  │  - SMTP Email             │
+        │ - Reminders       │  │  - Static IP      │  │  - SMS Gateway            │
+        │ - Auto Suspend    │  │  - QoS/Bandwidth  │  │  - WhatsApp Business API  │
+        └───────────────────┘  └───────────────────┘  └───────────────────────────┘
+```
+
+## Component Details
+
+### 1. Frontend Layer (Next.js 22)
+
+**Technology**: Next.js 22 with TypeScript, Tailwind CSS, and Shadcn/UI
+
+**Responsibilities**:
+- Server-Side Rendering (SSR) for SEO and performance
+- Admin dashboard with real-time updates
+- CRUD operations for all modules
+- Authentication UI with session management
+- Responsive design for mobile and desktop
+
+**Key Features**:
+- App Router with layouts
+- Server Components for data fetching
+- Client Components for interactivity
+- SWR for client-side data fetching
+- Form validation with React Hook Form + Zod
+
+### 2. Backend Layer (Laravel 12)
+
+**Technology**: Laravel 12 with PHP 8.3, Octane (RoadRunner), Sanctum
+
+**Responsibilities**: 
+- RESTful API endpoints
+- Authentication and authorization (RBAC)
+- Business logic and domain services
+- Database operations with Eloquent ORM
+- Queue job processing
+- Scheduled task execution
+
+**Key Services**:
+- `AuthService`: Authentication and token management
+- `BillingService`: Invoice generation and payment processing
+- `ProvisioningService`: Mikrotik integration and service provisioning
+- `NotificationService`: Email, SMS, WhatsApp delivery
+- `AuditService`: Action logging and tracking
+
+### 3. Database Layer (PostgreSQL 18)
+
+**Schema Design**:
+- 17 core tables with proper relationships
+- Soft deletes for critical entities
+- JSON fields for flexible data (permissions, config)
+- Proper indexing for performance
+- Foreign key constraints for data integrity
+
+### 4. Cache & Queue Layer (Redis 8)
+
+**Usage**:
+- Session storage
+- Cache layer (API responses, computed data)
+- Queue broker for async jobs
+- Rate limiting storage
+- Real-time features (future WebSocket support)
+
+### 5. Queue Processing (Laravel Horizon)
+
+**Job Types**:
+- `GenerateInvoiceJob`: Create invoices for billing cycles
+- `SendReminderJob`: Send notification reminders
+- `ProcessSoftLimitJob`: Apply bandwidth restrictions
+- `ProcessSuspendJob`: Suspend overdue services
+- `ProcessReactivateJob`: Reactivate paid services
+- `SyncRouterJob`: Sync Mikrotik configuration
+- `ProcessPaymentWebhookJob`: Handle payment callbacks
+
+### 6. Scheduler Container
+
+**Scheduled Tasks**:
+| Frequency | Task | Description |
+|-----------|------|-------------|
+| Daily 00:01 | `invoice: generate` | Generate upcoming invoices |
+| Hourly | `reminder:process` | Send scheduled reminders |
+| Every 15 min | `subscription:check-softlimit` | Apply soft-limit |
+| Every 15 min | `subscription:check-suspend` | Suspend overdue |
+| Every 5 min | `payment:process` | Process pending payments |
+| Daily 02:00 | `router:sync` | Full router sync |
+
+## Integration Patterns
+
+### 1. Mikrotik Integration
+
+```
+┌─────────────┐     RouterOS API (TLS)       ┌─────────────────┐
+│   Laravel   │ ◄──────────────────────────► │  Mikrotik       │
+│   Backend   │                              │  Router         │
+│             │     SSH (Fallback)           │                 │
+│             │ ◄──────────────────────────► │                 │
+└─────────────┘                              └─────────────────┘
+
+Operations:
+- Create/Update/Delete PPPoE secrets
+- Manage IP addresses (Static IP)
+- Apply bandwidth limits (rate-limit, max-limit)
+- Enable/Disable users (suspend/reactivate)
+- Backup configuration
+```
+
+### 2. Payment Gateway Integration
+
+```
+┌─────────────┐                               ┌─────────────────┐
+│   Customer  │ ────── Payment ─────────────► │  Midtrans/      │
+│   Browser   │                               │  Xendit         │
+└─────────────┘                               └─────────────────┘
+                                                     │
+                                                     │ Webhook
+                                                     ▼
+                                              ┌─────────────────┐
+                                              │   Laravel API   │
+                                              │   /webhooks/*   │
+                                              └─────────────────┘
+                                                     │
+                                                     ▼
+                                              ┌─────────────────┐
+                                              │  Update Invoice │
+                                              │  + Reactivate   │
+                                              └─────────────────┘
+```
+
+### 3. Notification Flow
+
+```
+┌─────────────┐     Queue Job        ┌─────────────────┐
+│  Scheduler  │ ───────────────────► │  Redis Queue    │
+└─────────────┘                      └─────────────────┘
+                                           │
+                                           ▼
+                                     ┌─────────────────┐
+                                     │  Horizon Worker │
+                                     └─────────────────┘
+                                           │
+                    ┌──────────────────────┼──────────────────────┐
+                    │                      │                      │
+                    ▼                      ▼                      ▼
+            ┌───────────────┐      ┌───────────────┐      ┌───────────────┐
+            │  SMTP Email   │      │  SMS Gateway  │      │  WhatsApp API │
+            └───────────────┘      └───────────────┘      └───────────────┘
+```
+
+## Security Architecture
+
+### Authentication Flow
+
+```
+┌─────────────┐                               ┌─────────────────┐
+│   Browser   │ ── POST /api/auth/login ────► │   Laravel API   │
+└─────────────┘                               └─────────────────┘
+      │                                              │
+      │                                              ▼
+      │                                       ┌─────────────────┐
+      │                                       │ Validate Creds  │
+      │                                       │ + Generate Token│
+      │                                       └─────────────────┘
+      │                                              │
+      │         Set HttpOnly Cookie (SPA)            │
+      ◄──────────────────────────────────────────────┘
+      │         or Bearer Token (API)
+      │
+      ▼
+┌─────────────┐                               ┌─────────────────┐
+│  Protected  │ ── Cookie/Token Header ─────► │  Sanctum Guard  │
+│  Request    │                               │  + RBAC Check   │
+└─────────────┘                               └─────────────────┘
+```
+
+### RBAC Permission Structure
+
+```json
+{
+  "users": ["view", "create", "update", "delete"],
+  "customers": ["view", "create", "update", "delete"],
+  "subscriptions": ["view", "create", "update", "delete"],
+  "invoices": ["view", "create", "update", "verify"],
+  "payments": ["view", "create", "verify", "reject"],
+  "tickets": ["view", "create", "update", "assign", "resolve"],
+  "products": ["view", "create", "update", "delete"],
+  "routers": ["view", "create", "update", "delete", "sync"],
+  "reports": ["view", "export"],
+  "settings": ["view", "update"],
+  "audit_logs": ["view"]
+}
+```
+
+## Data Flow Examples
+
+### 1. New Customer Registration Flow
+
+```
+1. Frontend: Submit customer form
+2. API:  Validate input
+3. API: Create customer record
+4. API: Create subscription record
+5. API: Generate provisioning data
+6. Queue: Dispatch ProvisioningJob
+7. Worker: Connect to Mikrotik
+8. Worker: Create PPPoE secret or IP binding
+9. API: Update provisioning status
+10. Notification: Send welcome email/SMS
+```
+
+### 2. Monthly Billing Cycle Flow
+
+```
+1. Scheduler: Run invoice: generate (H-7)
+2. Job: Get active subscriptions due for billing
+3. Job: Create invoice for each subscription
+4. Job: Schedule reminders (H-7, H-3, H-1)
+5. Scheduler: Run reminder:process
+6. Worker: Send reminder via preferred channel
+7. Customer: Makes payment
+8. Webhook: Receive payment confirmation
+9. Job: Update invoice status to Paid
+10. Job: Reactivate service if suspended
+```
+
+### 3. Auto-Suspend Flow
+
+```
+1. Scheduler: Run subscription:check-softlimit
+2. Job: Find invoices past soft-limit threshold
+3. Job: Connect to Mikrotik
+4. Job: Apply 50% bandwidth reduction
+5. Job: Update subscription status to 'Soft-Limit'
+6. Notification: Send soft-limit warning
+7. Scheduler: Run subscription:check-suspend (later)
+8. Job: Find invoices past suspend threshold
+9. Job: Disable user on Mikrotik
+10. Job: Update subscription status to 'Suspend'
+11. Notification: Send suspend notice
+```
+
+## Deployment Architecture
+
+### Development Environment
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Docker Compose (Dev)                     │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐         │
+│  │  Nginx  │  │   API   │  │   Web   │  │ Postgres│         │
+│  │  : 80   │  │  :8000  │  │  :3000  │  │  :5432  │         │
+│  └─────────┘  └─────────┘  └─────────┘  └─────────┘         │
+│                                                             │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐                      │
+│  │  Redis  │  │ Horizon │  │Scheduler│                      │
+│  │  :6379  │  │         │  │         │                      │
+│  └─────────┘  └─────────┘  └─────────┘                      │
+│                                                             │
+│  Bind Mounts:  ./apps/api, ./apps/web (hot reload)          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Production Environment
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Docker Compose (Prod)                     │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐         │
+│  │  Nginx  │  │   API   │  │   Web   │  │ Postgres│         │
+│  │ : 80/443│  │  :8000  │  │  :3000  │  │  :5432  │         │
+│  │  (SSL)  │  │(Octane) │  │ (Prod)  │  │         │         │
+│  └─────────┘  └─────────┘  └─────────┘  └─────────┘         │
+│                                                             │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐                      │
+│  │  Redis  │  │ Horizon │  │Scheduler│                      │
+│  │  :6379  │  │         │  │         │                      │
+│  └─────────┘  └─────────┘  └─────────┘                      │
+│                                                             │
+│  Named Volumes: postgres_data, redis_data, storage          │
+│  SSL Certs: /etc/letsencrypt mounted                        │
+└─────────────────────────────────────────────────────────────┘
+```
+```
