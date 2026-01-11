@@ -1,0 +1,164 @@
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  },
+  withCredentials: true,
+});
+
+// Request interceptor
+api.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    const token = localStorage. getItem('bcms_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
+// Response interceptor
+api.interceptors.response.use(
+  (response) => response. data,
+  (error) => {
+    if (error.response?.status === 401) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('bcms_token');
+        localStorage.removeItem('bcms_user');
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Auth API
+export const authApi = {
+  login: (email: string, password: string) =>
+    api.post('/api/auth/login', { email, password }),
+  logout: () => api.post('/api/auth/logout'),
+  me: () => api.get('/api/auth/me'),
+  updateProfile: (data: FormData) =>
+    api.put('/api/auth/profile', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+};
+
+// Dashboard API
+export const dashboardApi = {
+  getSummary: () => api.get('/api/dashboard/summary'),
+  getSuspendedCustomers: () => api.get('/api/dashboard/suspended-customers'),
+  getRecentActivities: () => api.get('/api/dashboard/recent-activities'),
+  getRecentTickets: () => api.get('/api/dashboard/recent-tickets'),
+};
+
+// Customer API
+export const customerApi = {
+  getAll: (params?: { page?: number; search?: string; per_page?: number }) =>
+    api.get('/api/customers', { params }),
+  getById: (id: number) => api.get(`/api/customers/${id}`),
+  create: (data: FormData) =>
+    api.post('/api/customers', data, {
+      headers: { 'Content-Type':  'multipart/form-data' },
+    }),
+  update: (id: number, data:  FormData) =>
+    api.put(`/api/customers/${id}`, data, {
+      headers: { 'Content-Type':  'multipart/form-data' },
+    }),
+  delete: (id: number) => api.delete(`/api/customers/${id}`),
+};
+
+// Subscription API
+export const subscriptionApi = {
+  getAll: (params?: { page?:  number; customer_id?: number; status?: string }) =>
+    api.get('/api/subscriptions', { params }),
+  getById: (id: number) => api.get(`/api/subscriptions/${id}`),
+  create: (data: FormData) =>
+    api.post('/api/subscriptions', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  update: (id: number, data: any) => api.put(`/api/subscriptions/${id}`, data),
+  delete: (id: number) => api.delete(`/api/subscriptions/${id}`),
+};
+
+// Invoice API
+export const invoiceApi = {
+  getAll: (params?: { page?: number; customer_id?: number; status?: string; overdue?: boolean }) =>
+    api.get('/api/invoices', { params }),
+  getById: (id: number) => api.get(`/api/invoices/${id}`),
+  create: (data: any) => api.post('/api/invoices', data),
+  update: (id: number, data: any) => api.put(`/api/invoices/${id}`, data),
+  generate: (subscriptionId?:  number) =>
+    api.post('/api/invoices/generate', { subscription_id: subscriptionId }),
+};
+
+// Payment API
+export const paymentApi = {
+  getAll: (params?: { page?: number; invoice_id?: number; status?: string }) =>
+    api.get('/api/payments', { params }),
+  getById: (id: number) => api.get(`/api/payments/${id}`),
+  create: (data: FormData) =>
+    api.post('/api/payments', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  verify: (id: number) => api.post(`/api/payments/${id}/verify`),
+  reject: (id: number, reason: string) =>
+    api.post(`/api/payments/${id}/reject`, { reason }),
+};
+
+// Ticket API
+export const ticketApi = {
+  getAll: (params?: { page?:  number; status?: string; category?: string; priority?: string }) =>
+    api.get('/api/tickets', { params }),
+  getById: (id: number) => api.get(`/api/tickets/${id}`),
+  create: (data: any) => api.post('/api/tickets', data),
+  update: (id: number, data: any) => api.put(`/api/tickets/${id}`, data),
+  assign: (id: number, userId: number) =>
+    api.post(`/api/tickets/${id}/assign`, { assigned_to: userId }),
+  resolve: (id: number, notes: string) =>
+    api.post(`/api/tickets/${id}/resolve`, { resolution_notes: notes }),
+  close: (id: number, rating?:  number, feedback?: string) =>
+    api.post(`/api/tickets/${id}/close`, { customer_rating: rating, customer_feedback: feedback }),
+};
+
+// Router API
+export const routerApi = {
+  getAll: (params?: { page?: number; status?: string }) =>
+    api.get('/api/routers', { params }),
+  getById: (id: number) => api.get(`/api/routers/${id}`),
+  create: (data: any) => api.post('/api/routers', data),
+  update: (id: number, data: any) => api.put(`/api/routers/${id}`, data),
+  delete: (id: number) => api.delete(`/api/routers/${id}`),
+  testConnection: (id: number) => api.post(`/api/routers/${id}/test-connection`),
+  sync: (id: number) => api.post(`/api/routers/${id}/sync`),
+};
+
+// Product API
+export const productApi = {
+  getAll:  (params?: { page?: number; type?: string }) =>
+    api.get('/api/products', { params }),
+  getById: (id: number) => api.get(`/api/products/${id}`),
+  create: (data: any) => api.post('/api/products', data),
+  update: (id: number, data: any) => api.put(`/api/products/${id}`, data),
+  delete: (id: number) => api.delete(`/api/products/${id}`),
+};
+
+// User API
+export const userApi = {
+  getAll:  (params?: { page?: number }) => api.get('/api/users', { params }),
+  getById: (id: number) => api.get(`/api/users/${id}`),
+  create: (data: any) => api.post('/api/users', data),
+  update: (id: number, data: any) => api.put(`/api/users/${id}`, data),
+  delete: (id: number) => api.delete(`/api/users/${id}`),
+};
+
+// Audit Log API
+export const auditLogApi = {
+  getAll:  (params?: { page?: number; action?: string; resource_type?: string }) =>
+    api.get('/api/audit-logs', { params }),
+};
+
+export default api;
