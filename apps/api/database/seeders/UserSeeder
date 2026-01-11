@@ -1,0 +1,70 @@
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+
+class UserSeeder extends Seeder
+{
+    public function run(): void
+    {
+        $users = [
+            [
+                'id' => 1,
+                'user_group_id' => 1, // Administrator
+                'company_id' => 1,
+                'name' => 'Abramz',
+                'email' => 'abramz@maroon-net.id',
+                'password' => Hash::make('password123'),
+                'nik' => '3216012501900001',
+                'phone' => '081234567890',
+                'locked' => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 2,
+                'user_group_id' => 2, // Supervisor
+                'company_id' => 1,
+                'name' => 'Fandi',
+                'email' => 'fandi@maroon-net.id',
+                'password' => Hash::make('password123'),
+                'nik' => '3216012501900002',
+                'phone' => '081234567891',
+                'locked' => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 3,
+                'user_group_id' => 3, // Finance
+                'company_id' => 1,
+                'name' => 'Meci',
+                'email' => 'meci@maroon-net.id',
+                'password' => Hash::make('password123'),
+                'nik' => '3216012501900003',
+                'phone' => '081234567892',
+                'locked' => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 4,
+                'user_group_id' => 5, // NOC/Technician
+                'company_id' => 1,
+                'name' => 'Yogi',
+                'email' => 'yogi@maroon-net.id',
+                'password' => Hash::make('password123'),
+                'nik' => '3216012501900004',
+                'phone' => '081234567893',
+                'locked' => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ];
+
+        DB::table('users')->insert($users);
+    }
+}
