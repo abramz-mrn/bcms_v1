@@ -1,0 +1,120 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\SubscriptionController;
+use App\Http\Controllers\Api\ProvisioningController;
+use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\TicketController;
+use App\Http\Controllers\Api\RouterController;
+use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\UserGroupController;
+use App\Http\Controllers\Api\CompanyController;
+use App\Http\Controllers\Api\BrandController;
+use App\Http\Controllers\Api\TemplateController;
+use App\Http\Controllers\Api\ReminderController;
+use App\Http\Controllers\Api\AuditLogController;
+use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\WebhookController;
+
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+*/
+
+// Public routes
+Route::post('/auth/login', [AuthController::class, 'login']);
+
+// Webhook routes (no auth required)
+Route::prefix('webhooks')->group(function () {
+    Route::post('/midtrans', [WebhookController::class, 'midtrans']);
+    Route::post('/xendit', [WebhookController:: class, 'xendit']);
+});
+
+// Protected routes
+Route::middleware('auth:sanctum')->group(function () {
+    // Auth
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::put('/auth/profile', [AuthController::class, 'updateProfile']);
+
+    // Dashboard
+    Route::prefix('dashboard')->group(function () {
+        Route::get('/summary', [DashboardController::class, 'summary']);
+        Route::get('/suspended-customers', [DashboardController::class, 'suspendedCustomers']);
+        Route::get('/recent-activities', [DashboardController::class, 'recentActivities']);
+        Route::get('/recent-tickets', [DashboardController::class, 'recentTickets']);
+    });
+
+    // Users & User Groups
+    Route::apiResource('users', UserController::class);
+    Route::apiResource('user-groups', UserGroupController:: class);
+
+    // Company & Brands
+    Route::get('/companies/{company}', [CompanyController::class, 'show']);
+    Route::put('/companies/{company}', [CompanyController::class, 'update']);
+    Route::apiResource('brands', BrandController::class);
+
+    // Products & Internet Services
+    Route::apiResource('products', ProductController::class);
+    Route::get('/products/{product}/internet-service', [ProductController::class, 'internetService']);
+    Route::post('/products/{product}/internet-service', [ProductController::class, 'storeInternetService']);
+    Route::put('/products/{product}/internet-service', [ProductController::class, 'updateInternetService']);
+
+    // Promotions
+    Route::apiResource('promotions', PromotionController::class);
+
+    // Routers
+    Route::apiResource('routers', RouterController::class);
+    Route::post('/routers/{router}/test-connection', [RouterController::class, 'testConnection']);
+    Route::post('/routers/{router}/sync', [RouterController::class, 'sync']);
+
+    // Customers
+    Route::apiResource('customers', CustomerController::class);
+
+    // Subscriptions
+    Route::apiResource('subscriptions', SubscriptionController::class);
+
+    // Provisionings
+    Route::apiResource('provisionings', ProvisioningController::class);
+    Route::post('/provisionings/{provisioning}/provision', [ProvisioningController:: class, 'provision']);
+    Route::post('/provisionings/{provisioning}/ping', [ProvisioningController:: class, 'pingTest']);
+
+    // Invoices
+    Route::apiResource('invoices', InvoiceController::class)->except(['destroy']);
+    Route::post('/invoices/generate', [InvoiceController::class, 'generate']);
+
+    // Payments
+    Route::apiResource('payments', PaymentController::class)->except(['update', 'destroy']);
+    Route::post('/payments/{payment}/verify', [PaymentController::class, 'verify']);
+    Route::post('/payments/{payment}/reject', [PaymentController::class, 'reject']);
+
+    // Tickets
+    Route:: apiResource('tickets', TicketController::class)->except(['destroy']);
+    Route::post('/tickets/{ticket}/assign', [TicketController::class, 'assign']);
+    Route::post('/tickets/{ticket}/resolve', [TicketController::class, 'resolve']);
+    Route::post('/tickets/{ticket}/close', [TicketController::class, 'close']);
+
+    // Templates
+    Route::apiResource('templates', TemplateController::class);
+
+    // Reminders
+    Route::get('/reminders', [ReminderController::class, 'index']);
+    Route::post('/reminders/{reminder}/send', [ReminderController::class, 'send']);
+
+    // Audit Logs
+    Route::get('/audit-logs', [AuditLogController::class, 'index']);
+
+    // Reports
+    Route::prefix('reports')->group(function () {
+        Route::get('/revenue', [ReportController::class, 'revenue']);
+        Route::get('/customers', [ReportController::class, 'customers']);
+        Route::get('/subscriptions', [ReportController::class, 'subscriptions']);
+        Route::post('/export', [ReportController::class, 'export']);
+    });
+});
