@@ -3,31 +3,30 @@
 namespace App\Console\Commands;
 
 use App\Models\Subscription;
-use App\Models\Invoice;
-use App\Jobs\ProcessSoftLimitJob;
+use App\Jobs\ProcessSuspendJob;
 use Illuminate\Console\Command;
 
-class CheckSoftLimitCommand extends Command
+class CheckSuspendCommand extends Command
 {
-    protected $signature = 'subscription:check-softlimit';
-    protected $description = 'Check and apply soft-limit to overdue subscriptions';
+    protected $signature = 'subscription:check-suspend';
+    protected $description = 'Check and suspend overdue subscriptions';
 
     public function handle(): int
     {
-        $this->info('Checking for soft-limit candidates...');
+        $this->info('Checking for suspend candidates...');
 
-        $subscriptions = Subscription::where('status', 'Active')
+        $subscriptions = Subscription::whereIn('status', ['Active', 'Soft-Limit'])
             ->whereHas('invoices', function ($query) {
                 $query->where('status', 'Unpaid')
                     ->whereDate('due_date', '<', now());
             })
-            ->with(['product. internetService', 'provisioning.router'])
+            ->with(['product.internetService', 'provisioning.router'])
             ->get();
 
         $count = 0;
         foreach ($subscriptions as $subscription) {
             $internetService = $subscription->product->internetService;
-            if (! $internetService) {
+            if (!$internetService) {
                 continue;
             }
 
@@ -39,14 +38,14 @@ class CheckSoftLimitCommand extends Command
             if ($overdueInvoice) {
                 $daysOverdue = $overdueInvoice->getDaysOverdue();
                 
-                if ($daysOverdue >= $internetService->auto_soft_limit) {
-                    ProcessSoftLimitJob::dispatch($subscription);
+                if ($daysOverdue >= $internetService->auto_suspend) {
+                    ProcessSuspendJob::dispatch($subscription);
                     $count++;
                 }
             }
         }
 
-        $this->info("Dispatched {$count} soft-limit jobs");
+        $this->info("Dispatched {$count} suspend jobs");
 
         return 0;
     }
