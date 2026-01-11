@@ -1,0 +1,142 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Invoice;
+use App\Models\Subscription;
+use App\Models\AuditLog;
+use App\Services\BillingService;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+
+class InvoiceController extends Controller
+{
+    public function __construct(
+        protected BillingService $billingService
+    ) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        $query = Invoice::with(['customer', 'subscription', 'product']);
+
+        if ($request->has('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->has('date_from')) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+
+        if ($request->has('date_to')) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
+        if ($request->has('overdue') && $request->overdue) {
+            $query->where('status', 'Unpaid')
+                ->whereDate('due_date', '<', now());
+        }
+
+        $invoices = $query->latest()->paginate($request->per_page ?? 15);
+
+        return $this->paginatedResponse($invoices);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'customer_id' => 'required|exists:customers,id',
+            'subscription_id' => 'required|exists:subscriptions,id',
+            'product_id' => 'required|exists:products,id',
+            'period_start' => 'required|date',
+            'period_end' => 'required|date|after:period_start',
+            'amount' => 'required|numeric|min:0',
+            'tax_amount' => 'required|numeric|min:0',
+            'discount_amount' => 'nullable|numeric|min:0',
+            'total_amount' => 'required|numeric|min:0',
+            'due_date' => 'required|date',
+            'notes' => 'nullable|string',
+        ]);
+
+        $validated['invoice_no'] = Invoice::generateInvoiceNo();
+        $validated['status'] = 'Unpaid';
+        $validated['created_by'] = auth()->id();
+
+        $invoice = Invoice::create($validated);
+
+        // Create reminders
+        $this->billingService->createRemindersForInvoice($invoice);
+
+        AuditLog::log(
+            'create',
+            'Invoice',
+            $invoice->id,
+            null,
+            $invoice->toArray(),
+            "Created invoice:  {$invoice->invoice_no}"
+        );
+
+        return $this->successResponse(
+            $invoice->load(['customer', 'subscription', 'product']),
+            'Invoice created successfully',
+            201
+        );
+    }
+
+    public function show(Invoice $invoice): JsonResponse
+    {
+        $invoice->load(['customer', 'subscription', 'product', 'payments', 'reminders']);
+
+        return $this->successResponse($invoice);
+    }
+
+    public function update(Request $request, Invoice $invoice): JsonResponse
+    {
+        $validated = $request->validate([
+            'due_date' => 'sometimes|date',
+            'notes' => 'nullable|string',
+            'status' => 'sometimes|in:Unpaid,Paid,Partial,Cancelled',
+        ]);
+
+        $oldData = $invoice->toArray();
+
+        $invoice->update($validated);
+
+        AuditLog::log(
+            'update',
+            'Invoice',
+            $invoice->id,
+            $oldData,
+            $invoice->toArray(),
+            "Updated invoice:  {$invoice->invoice_no}"
+        );
+
+        return $this->successResponse($invoice, 'Invoice updated successfully');
+    }
+
+    public function generate(Request $request): JsonResponse
+    {
+        $request->validate([
+            'subscription_id' => 'nullable|exists:subscriptions,id',
+        ]);
+
+        if ($request->has('subscription_id')) {
+            $subscription = Subscription::findOrFail($request->subscription_id);
+            $invoice = $this->billingService->generateInvoiceForSubscription($subscription);
+            
+            return $this->successResponse($invoice, 'Invoice generated successfully');
+        }
+
+        // Generate for all active subscriptions due for billing
+        $count = $this->billingService->generateMonthlyInvoices();
+
+        return $this->successResponse(
+            ['generated_count' => $count],
+            "Generated {$count} invoices"
+        );
+    }
+}
